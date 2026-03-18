@@ -9,7 +9,7 @@ import board
 # pylint:disable=no-member
 from adafruit_lsm6ds import AccelRange, GyroRange, Rate
 from adafruit_lsm6ds.lsm6dsox import LSM6DSOX as LSM6DS
-from adafruit_lis3mdl.lis3mdl import LIS3MDL
+from adafruit_lis3mdl import LIS3MDL
 
 # from adafruit_lsm6ds.lsm6ds33 import LSM6DS33 as LSM6DS
 # from adafruit_lsm6ds.lsm6dso32 import LSM6DSO32 as LSM6DS

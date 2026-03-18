@@ -15,8 +15,8 @@ from adafruit_lis3mdl import LIS3MDL
 # from adafruit_lsm6ds.lsm6dso32 import LSM6DSO32 as LSM6DS
 # from adafruit_lsm6ds.ism330dhcx import ISM330DHCX as LSM6DS
 
-#i2c = board.I2C()  # uses board.SCL and board.SDA
-i2c = board.STEMMA_I2C()  # For using the built-in STEMMA QT connector on a microcontroller
+i2c = board.I2C()  # uses board.SCL and board.SDA
+#i2c = board.STEMMA_I2C()  # For using the built-in STEMMA QT connector on a microcontroller
 dof6 = LSM6DS(i2c)
 dof3 = LIS3MDL(i2c)
 

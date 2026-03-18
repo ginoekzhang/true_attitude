@@ -4,7 +4,7 @@ import uselect
 import time
 
 # ===== User settings =====
-PWM_PIN = 15           # Pico GPIO used for ESC signal
+PWM_PIN = 5           # Pico GPIO used for ESC signal
 PWM_FREQ = 50          # 50 Hz is the common hobby ESC/servo rate
 MIN_US = 1000          # adjust if your ESC manual says otherwise
 MAX_US = 2000

@@ -24,6 +24,15 @@ def set_pulse_us(us):
 def stop_motor():
     set_pulse_us(MIN_US)
 
+def clean_cmd(raw):
+    # Keep only printable ASCII plus spaces
+    filtered = []
+    for ch in raw:
+        o = ord(ch)
+        if ch == " " or (33 <= o <= 126):
+            filtered.append(ch)
+    return "".join(filtered).strip()
+
 stop_motor()
 
 poll = uselect.poll()
@@ -39,21 +48,26 @@ while True:
     if not events:
         continue
 
-    line = sys.stdin.readline()
-    if not line:
+    raw = sys.stdin.readline()
+    if not raw:
         continue
 
-    cmd = line.strip()
+    cmd = clean_cmd(raw)
 
+    # Ignore startup junk / blank lines
     if not cmd:
         continue
 
     parts = cmd.split()
+    if len(parts) == 0:
+        continue
+
     op = parts[0].upper()
+    print("DEBUG CMD:", repr(cmd), "OP:", repr(op))
 
     if op == "ARM":
         print("ARMING...")
-        stop_motor()
+        set_pulse_us(ARM_US)
         time.sleep(2.5)
         armed = True
         print("ARMED")
@@ -88,4 +102,6 @@ while True:
         print("THROTTLE SET", us)
 
     else:
+        # Ignore unknown junk silently if you want:
+        # continue
         print("ERR UNKNOWN CMD")

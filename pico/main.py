@@ -3,18 +3,19 @@ import sys
 import uselect
 import time
 
-PWM_PIN = 5
-PWM_FREQ = 50
-MIN_US = 1000
+# ===== User settings =====
+PWM_PIN = 5           # Pico GPIO used for ESC signal
+PWM_FREQ = 50          # 50 Hz is the common hobby ESC/servo rate
+MIN_US = 1000          # adjust if your ESC manual says otherwise
 MAX_US = 2000
-ARM_US = 1000
-TEST_US = 1100
+ARM_US = 1000          # most ESCs arm at minimum throttle
+START_US = 1100        # gentle initial spin test
+# =========================
 
 pwm = PWM(Pin(PWM_PIN))
 pwm.freq(PWM_FREQ)
 
-def set_pulse_us(us):
-    us = int(us)
+def set_pulse_us(us: int):
     if us < MIN_US:
         us = MIN_US
     if us > MAX_US:
@@ -24,84 +25,67 @@ def set_pulse_us(us):
 def stop_motor():
     set_pulse_us(MIN_US)
 
-def clean_cmd(raw):
-    # Keep only printable ASCII plus spaces
-    filtered = []
-    for ch in raw:
-        o = ord(ch)
-        if ch == " " or (33 <= o <= 126):
-            filtered.append(ch)
-    return "".join(filtered).strip()
-
+# Start safe
 stop_motor()
 
 poll = uselect.poll()
 poll.register(sys.stdin, uselect.POLLIN)
 
-armed = False
-
 print("PICO READY")
 print("Commands: ARM, STOP, THROTTLE <us>, TEST")
 
+armed = False
+
 while True:
-    events = poll.poll(50)
+    events = poll.poll(50)  # 50 ms poll
     if not events:
         continue
 
-    raw = sys.stdin.readline()
-    if not raw:
+    line = sys.stdin.readline()
+    if not line:
         continue
 
-    cmd = clean_cmd(raw)
+    cmd = line.strip().upper()
 
-    # Ignore startup junk / blank lines
-    if not cmd:
-        continue
-
-    parts = cmd.split()
-    if len(parts) == 0:
-        continue
-
-    op = parts[0].upper()
-    print("DEBUG CMD:", repr(cmd), "OP:", repr(op))
-
-    if op == "ARM":
+    if cmd == "ARM":
         print("ARMING...")
-        set_pulse_us(ARM_US)
+        # Hold minimum throttle so ESC can arm
+        stop_motor()
         time.sleep(2.5)
         armed = True
         print("ARMED")
 
-    elif op == "STOP":
+    elif cmd == "STOP":
         stop_motor()
         print("STOPPED")
 
-    elif op == "TEST":
-        if not armed:
-            print("ERR NOT ARMED")
-            continue
-        print("TEST START")
-        set_pulse_us(TEST_US)
-        time.sleep(2.0)
-        stop_motor()
-        print("TEST DONE")
-
-    elif op == "THROTTLE":
+    elif cmd.startswith("THROTTLE"):
+        parts = cmd.split()
         if len(parts) != 2:
             print("ERR BAD THROTTLE FORMAT")
-            continue
-        if not armed:
-            print("ERR NOT ARMED")
             continue
         try:
             us = int(parts[1])
         except ValueError:
             print("ERR BAD NUMBER")
             continue
+
+        if not armed:
+            print("ERR NOT ARMED")
+            continue
+
         set_pulse_us(us)
         print("THROTTLE SET", us)
 
+    elif cmd == "TEST":
+        if not armed:
+            print("ERR NOT ARMED")
+            continue
+        print("TEST START")
+        set_pulse_us(START_US)
+        time.sleep(2.0)
+        stop_motor()
+        print("TEST DONE")
+
     else:
-        # Ignore unknown junk silently if you want:
-        # continue
         print("ERR UNKNOWN CMD")

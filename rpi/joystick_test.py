@@ -113,10 +113,15 @@ def arm_escs(serial_port):
 def emergency_stop(serial_port):
     print("!!! EMERGENCY STOP PRESSED !!!")
 
-    send_motors(serial_port, [OFF_PWM] * 6)
-    time.sleep(0.05)
+    # Clear unsent old commands from Pi side
+    serial_port.reset_output_buffer()
 
+    # Send only OFF + STOP
+    send_motors(serial_port, [OFF_PWM] * 6)
+    time.sleep(0.02)
     send_cmd(serial_port, "STOP", quiet=False)
+
+    # Wait and read Pico response
     time.sleep(0.1)
     drain(serial_port)
 

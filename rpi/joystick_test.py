@@ -1,27 +1,27 @@
 ﻿import serial
 import time
-
 from evdev import InputDevice, ecodes, list_devices
 
 SERIAL_PORT = "/dev/ttyACM0"
 BAUD = 115200
-SERIAL_TIMEOUT = 0.3
+SERIAL_TIMEOUT = 0.05
 
+OFF_PWM = 0          # use 1000 instead if Pico/ESC does not accept 0
 MOTOR_MIN = 1155
 MOTOR_MAX = 1300
-BASE_THROTTLE = MOTOR_MIN  # Changed to MOTOR_MIN for 0-100% mapping
-DEADZONE = 0.08
-INPUT_THRESHOLD = 0.1  # Noise shield threshold
 
-# Motor assignments
+DEADZONE = 0.08
+INPUT_THRESHOLD = 0.10
+
+SEND_HZ = 20
+SEND_PERIOD = 1.0 / SEND_HZ
+
 PITCH_UP = 0
 PITCH_DOWN = 1
 YAW_LEFT = 2
 YAW_RIGHT = 3
 ROLL_LEFT = 4
 ROLL_RIGHT = 5
-
-# Joystick axes: -1 to 1, where -1 is down/left, 1 is up/right
 
 
 def find_xbox_controller():
@@ -46,27 +46,25 @@ def clamp(value, minimum, maximum):
 
 
 def mix_motors(pitch, roll, yaw):
-    motors = [BASE_THROTTLE] * 6
+    motors = [OFF_PWM] * 6
+    span = MOTOR_MAX - MOTOR_MIN
 
-    # Pitch: motor 0 (up), motor 1 (down)
     if pitch > 0:
-        motors[PITCH_UP] = BASE_THROTTLE + pitch * (MOTOR_MAX - BASE_THROTTLE)
+        motors[PITCH_UP] = MOTOR_MIN + pitch * span
     elif pitch < 0:
-        motors[PITCH_DOWN] = BASE_THROTTLE + (-pitch) * (MOTOR_MAX - BASE_THROTTLE)
+        motors[PITCH_DOWN] = MOTOR_MIN + (-pitch) * span
 
-    # Yaw: motor 2 (left), motor 3 (right)
-    if yaw > 0:  # right
-        motors[YAW_RIGHT] = BASE_THROTTLE + yaw * (MOTOR_MAX - BASE_THROTTLE)
-    elif yaw < 0:  # left
-        motors[YAW_LEFT] = BASE_THROTTLE + (-yaw) * (MOTOR_MAX - BASE_THROTTLE)
+    if yaw > 0:
+        motors[YAW_RIGHT] = MOTOR_MIN + yaw * span
+    elif yaw < 0:
+        motors[YAW_LEFT] = MOTOR_MIN + (-yaw) * span
 
-    # Roll: motor 4 (left), motor 5 (right)
-    if roll > 0:  # right
-        motors[ROLL_RIGHT] = BASE_THROTTLE + roll * (MOTOR_MAX - BASE_THROTTLE)
-    elif roll < 0:  # left
-        motors[ROLL_LEFT] = BASE_THROTTLE + (-roll) * (MOTOR_MAX - BASE_THROTTLE)
+    if roll > 0:
+        motors[ROLL_RIGHT] = MOTOR_MIN + roll * span
+    elif roll < 0:
+        motors[ROLL_LEFT] = MOTOR_MIN + (-roll) * span
 
-    return [int(round(m)) for m in motors]
+    return [int(round(clamp(m, OFF_PWM, MOTOR_MAX))) for m in motors]
 
 
 def drain(serial_port):
@@ -76,15 +74,18 @@ def drain(serial_port):
             print("PICO:", line)
 
 
-def send_cmd(serial_port, cmd, wait=0.1, quiet=False):
+def send_cmd(serial_port, cmd, quiet=True):
     full_cmd = "CMD " + cmd
     if not quiet:
         print("SEND:", full_cmd)
+
     serial_port.write((full_cmd + "\n").encode("utf-8"))
     serial_port.flush()
-    time.sleep(wait)
-    if not quiet:
-        drain(serial_port)
+
+
+def send_motors(serial_port, motor_pwms):
+    cmd = "MOTORS " + " ".join(str(p) for p in motor_pwms)
+    send_cmd(serial_port, cmd, quiet=True)
 
 
 def main():
@@ -95,7 +96,6 @@ def main():
 
     print(f"Connected to: {controller.name}")
     print(f"Device path: {controller.path}")
-    print("Reading joystick axes and sending 6-motor throttle values...")
 
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD, timeout=SERIAL_TIMEOUT)
@@ -109,20 +109,32 @@ def main():
     drain(ser)
 
     try:
-        input("Press Enter to ARM ESCs and begin motor control (Ctrl+C to cancel)...")
-        send_cmd(ser, "ARM", wait=4.5)
-        send_cmd(ser, "MOTORS " + " ".join(str(BASE_THROTTLE) for _ in range(6)), wait=0.2)
+        input("Press Enter to ARM ESCs and begin motor control...")
+
+        print("Arming ESCs...")
+        send_cmd(ser, "ARM", quiet=False)
+        time.sleep(4.5)
+        drain(ser)
+
+        print("Starting with all motors OFF.")
+        send_motors(ser, [OFF_PWM] * 6)
 
         pitch = 0.0
         yaw = 0.0
         roll = 0.0
-        last_print_time = time.time()
+
+        last_send_time = 0.0
+        last_print_time = 0.0
+        last_motor_pwms = None
+
+        print("Controller active. Ctrl+C to stop.")
 
         for event in controller.read_loop():
             if event.type != ecodes.EV_ABS:
                 continue
 
             code = ecodes.ABS[event.code]
+
             if code == "ABS_RZ":
                 pitch = -normalize_stick(event.value)
             elif code == "ABS_Z":
@@ -136,27 +148,43 @@ def main():
             yaw = deadzone(yaw)
             roll = deadzone(roll)
 
-            motor_pwms = mix_motors(pitch, roll, yaw)
+            active = max(abs(pitch), abs(yaw), abs(roll)) > INPUT_THRESHOLD
 
-            # Noise shield: only send commands if input exceeds threshold
-            if max(abs(pitch), abs(yaw), abs(roll)) > INPUT_THRESHOLD:
-                send_cmd(ser, "MOTORS " + " ".join(str(p) for p in motor_pwms), wait=0.05, quiet=False)
+            if active:
+                motor_pwms = mix_motors(pitch, roll, yaw)
+            else:
+                motor_pwms = [OFF_PWM] * 6
 
-                current_time = time.time()
-                if current_time - last_print_time > 0.5:
-                    print(
-                        f"Pitch: {pitch:+.2f} | Yaw: {yaw:+.2f} | Roll: {roll:+.2f} | "
-                        f"PitchUp:{motor_pwms[PITCH_UP]} PitchDown:{motor_pwms[PITCH_DOWN]} | "
-                        f"YawLeft:{motor_pwms[YAW_LEFT]} YawRight:{motor_pwms[YAW_RIGHT]} | "
-                        f"RollLeft:{motor_pwms[ROLL_LEFT]} RollRight:{motor_pwms[ROLL_RIGHT]}"
-                    )
-                    last_print_time = current_time
+            now = time.time()
+
+            if now - last_send_time >= SEND_PERIOD:
+                if motor_pwms != last_motor_pwms:
+                    send_motors(ser, motor_pwms)
+                    last_motor_pwms = motor_pwms[:]
+
+                last_send_time = now
+
+            if now - last_print_time >= 0.5:
+                print(
+                    f"Active:{active} | "
+                    f"Pitch:{pitch:+.2f} Yaw:{yaw:+.2f} Roll:{roll:+.2f} | "
+                    f"Motors:{motor_pwms}"
+                )
+                last_print_time = now
 
     except KeyboardInterrupt:
-        print("\nStopping and closing serial port...")
+        print("\nStopping motors...")
+
     finally:
-        send_cmd(ser, "STOP", wait=0.2)
+        try:
+            send_motors(ser, [OFF_PWM] * 6)
+            time.sleep(0.1)
+            send_cmd(ser, "STOP", quiet=False)
+        except Exception:
+            pass
+
         ser.close()
+        print("Serial port closed.")
 
 
 if __name__ == "__main__":

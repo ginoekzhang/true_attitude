@@ -48,7 +48,7 @@ for event in controller.read_loop():
         #elif code == "ABS_GAS":
         #    roll_r = normalize_trigger(event.value)
 
-        elif code == "ABS_Y":
+        elif code == "ABS_RY":
             roll = normalize_stick(event.value)
 
         #print(f"Pitch: {pitch:>6} | Yaw: {yaw:>6} | Roll L: {roll_l:>4} | Roll R: {roll_r:>4}")

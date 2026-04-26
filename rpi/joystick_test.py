@@ -35,16 +35,16 @@ for event in controller.read_loop():
     if event.type == ecodes.EV_ABS:
         code = ecodes.ABS[event.code]
 
-        if code == "ABS_Z":
+        if code == "ABS_RZ":
             pitch = normalize_stick(event.value)
 
-        elif code == "ABS_RZ":
+        elif code == "ABS_Z":
             yaw = normalize_stick(event.value)
 
-        elif code == "ABS_GAS":
+        elif code == "ABS_BRAKE":
             roll_l = normalize_trigger(event.value)
 
-        elif code == "ABS_BRAKE":
+        elif code == "ABS_GAS":
             roll_r = normalize_trigger(event.value)
 
         print(f"Pitch: {pitch:>6} | Yaw: {yaw:>6} | Roll L: {roll_l:>4} | Roll R: {roll_r:>4}")

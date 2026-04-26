@@ -141,7 +141,7 @@ def main():
 
         while True:
             try:
-                events = controller.read()
+                events = list(controller.read())
             except BlockingIOError:
                 events = []
 

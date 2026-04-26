@@ -6,8 +6,8 @@ import machine
 
 PWM_PINS = [0, 1, 2, 3, 4, 5]
 PWM_FREQ = 50
-MIN_US = 1000
-MAX_US = 2000
+MIN_US = 1155
+MAX_US = 1300
 ARM_US = 1000
 
 pwms = [PWM(Pin(pin)) for pin in PWM_PINS]

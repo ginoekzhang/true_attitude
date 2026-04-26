@@ -10,19 +10,17 @@ SERIAL_TIMEOUT = 0.3
 MOTOR_MIN = 1155
 MOTOR_MAX = 1300
 BASE_THROTTLE = 1227
-CONTROL_SCALE = 25
 DEADZONE = 0.08
 
-# Mixing matrix for a 6-motor hex-style layout.
-# Adjust the coefficients if your motor numbering or frame geometry differs.
-MIX_MATRIX = [
-    (+1.0, +1.0, -1.0),  # motor 1
-    (+1.0, -1.0, +1.0),  # motor 2
-    (0.0, -1.0, -1.0),   # motor 3
-    (-1.0, -1.0, +1.0),  # motor 4
-    (-1.0, +1.0, -1.0),  # motor 5
-    (0.0, +1.0, +1.0),   # motor 6
-]
+# Motor assignments
+PITCH_UP = 0
+PITCH_DOWN = 1
+YAW_LEFT = 2
+YAW_RIGHT = 3
+ROLL_LEFT = 4
+ROLL_RIGHT = 5
+
+# Joystick axes: -1 to 1, where -1 is down/left, 1 is up/right
 
 
 def find_xbox_controller():
@@ -47,16 +45,27 @@ def clamp(value, minimum, maximum):
 
 
 def mix_motors(pitch, roll, yaw):
-    motors = []
-    for pitch_c, roll_c, yaw_c in MIX_MATRIX:
-        raw = (
-            BASE_THROTTLE
-            + pitch * pitch_c * CONTROL_SCALE
-            + roll * roll_c * CONTROL_SCALE
-            + yaw * yaw_c * CONTROL_SCALE
-        )
-        motors.append(int(round(clamp(raw, MOTOR_MIN, MOTOR_MAX))))
-    return motors
+    motors = [BASE_THROTTLE] * 6
+
+    # Pitch: motor 0 (up), motor 1 (down)
+    if pitch > 0:
+        motors[PITCH_UP] = BASE_THROTTLE + pitch * (MOTOR_MAX - BASE_THROTTLE)
+    elif pitch < 0:
+        motors[PITCH_DOWN] = BASE_THROTTLE + (-pitch) * (MOTOR_MAX - BASE_THROTTLE)
+
+    # Yaw: motor 2 (left), motor 3 (right)
+    if yaw > 0:  # right
+        motors[YAW_RIGHT] = BASE_THROTTLE + yaw * (MOTOR_MAX - BASE_THROTTLE)
+    elif yaw < 0:  # left
+        motors[YAW_LEFT] = BASE_THROTTLE + (-yaw) * (MOTOR_MAX - BASE_THROTTLE)
+
+    # Roll: motor 4 (left), motor 5 (right)
+    if roll > 0:  # right
+        motors[ROLL_RIGHT] = BASE_THROTTLE + roll * (MOTOR_MAX - BASE_THROTTLE)
+    elif roll < 0:  # left
+        motors[ROLL_LEFT] = BASE_THROTTLE + (-roll) * (MOTOR_MAX - BASE_THROTTLE)
+
+    return [int(round(m)) for m in motors]
 
 
 def drain(serial_port):
@@ -128,7 +137,9 @@ def main():
 
             print(
                 f"Pitch: {pitch:+.2f} | Yaw: {yaw:+.2f} | Roll: {roll:+.2f} | "
-                + " | ".join(f"M{i+1}:{motor_pwms[i]}" for i in range(len(motor_pwms)))
+                f"PitchUp:{motor_pwms[PITCH_UP]} PitchDown:{motor_pwms[PITCH_DOWN]} | "
+                f"YawLeft:{motor_pwms[YAW_LEFT]} YawRight:{motor_pwms[YAW_RIGHT]} | "
+                f"RollLeft:{motor_pwms[ROLL_LEFT]} RollRight:{motor_pwms[ROLL_RIGHT]}"
             )
 
     except KeyboardInterrupt:

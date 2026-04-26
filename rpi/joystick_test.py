@@ -161,15 +161,14 @@ def main():
 
             for event in events:
                 if event.type == ecodes.EV_KEY:
-                    key = ecodes.bytype[ecodes.EV_KEY][event.code]
-
-                    if key == KILL_BUTTON and event.value == 1:
+                    if event.code == ecodes.BTN_SOUTH and event.value == 1:
                         emergency_stop(ser)
                         killed = True
                         last_motor_pwms = [OFF_PWM] * 6
                         pitch = 0.0
                         yaw = 0.0
                         roll = 0.0
+                        continue
 
                 elif event.type == ecodes.EV_ABS and not killed:
                     code = ecodes.ABS[event.code]

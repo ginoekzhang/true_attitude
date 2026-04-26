@@ -161,7 +161,7 @@ def main():
 
             for event in events:
                 if event.type == ecodes.EV_KEY:
-                    key = ecodes.KEY[event.code]
+                    key = ecodes.bytype[ecodes.EV_KEY][event.code]
 
                     if key == KILL_BUTTON and event.value == 1:
                         emergency_stop(ser)

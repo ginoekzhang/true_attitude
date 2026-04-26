@@ -28,8 +28,9 @@ print("Reading right joystick, RT, and LT...")
 
 pitch = 0
 yaw = 0
-roll_l = 0
-roll_r = 0
+#roll_l = 0
+#roll_r = 0
+roll = 0
 
 for event in controller.read_loop():
     if event.type == ecodes.EV_ABS:
@@ -41,10 +42,14 @@ for event in controller.read_loop():
         elif code == "ABS_Z":
             yaw = normalize_stick(event.value)
 
-        elif code == "ABS_BRAKE":
-            roll_l = normalize_trigger(event.value)
+        #elif code == "ABS_BRAKE":
+        #    roll_l = normalize_trigger(event.value)
 
-        elif code == "ABS_GAS":
-            roll_r = normalize_trigger(event.value)
+        #elif code == "ABS_GAS":
+        #    roll_r = normalize_trigger(event.value)
 
-        print(f"Pitch: {pitch:>6} | Yaw: {yaw:>6} | Roll L: {roll_l:>4} | Roll R: {roll_r:>4}")
+        elif code == "ABS_Y":
+            roll = normalize_stick(event.value)
+
+        #print(f"Pitch: {pitch:>6} | Yaw: {yaw:>6} | Roll L: {roll_l:>4} | Roll R: {roll_r:>4}")
+        print(f"Pitch: {pitch:>6} | Yaw: {yaw:>6} | Roll: {roll:>6}")

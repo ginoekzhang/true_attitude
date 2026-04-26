@@ -6,7 +6,7 @@ SERIAL_PORT = "/dev/ttyACM0"
 BAUD = 115200
 SERIAL_TIMEOUT = 0.05
 
-OFF_PWM = 0          # use 1000 instead if Pico/ESC does not accept 0
+OFF_PWM = 0          # use 1000 if Pico/ESC does not accept 0
 MOTOR_MIN = 1155
 MOTOR_MAX = 1300
 
@@ -15,6 +15,9 @@ INPUT_THRESHOLD = 0.10
 
 SEND_HZ = 20
 SEND_PERIOD = 1.0 / SEND_HZ
+
+PRINT_PERIOD_ACTIVE = 0.5      # twice per second when active
+PRINT_PERIOD_INACTIVE = 0.5    # same rate when inactive
 
 PITCH_UP = 0
 PITCH_DOWN = 1
@@ -76,11 +79,12 @@ def drain(serial_port):
 
 def send_cmd(serial_port, cmd, quiet=True):
     full_cmd = "CMD " + cmd
+
     if not quiet:
         print("SEND:", full_cmd)
 
     serial_port.write((full_cmd + "\n").encode("utf-8"))
-    serial_port.flush()
+    # Do not flush here. flush() can block and slow active control.
 
 
 def send_motors(serial_port, motor_pwms):
@@ -126,6 +130,7 @@ def main():
         last_send_time = 0.0
         last_print_time = 0.0
         last_motor_pwms = None
+        last_active = None
 
         print("Controller active. Ctrl+C to stop.")
 
@@ -152,8 +157,10 @@ def main():
 
             if active:
                 motor_pwms = mix_motors(pitch, roll, yaw)
+                print_period = PRINT_PERIOD_ACTIVE
             else:
                 motor_pwms = [OFF_PWM] * 6
+                print_period = PRINT_PERIOD_INACTIVE
 
             now = time.time()
 
@@ -164,7 +171,16 @@ def main():
 
                 last_send_time = now
 
-            if now - last_print_time >= 0.5:
+            if active != last_active:
+                print(
+                    f"Active:{active} | "
+                    f"Pitch:{pitch:+.2f} Yaw:{yaw:+.2f} Roll:{roll:+.2f} | "
+                    f"Motors:{motor_pwms}"
+                )
+                last_active = active
+                last_print_time = now
+
+            elif now - last_print_time >= print_period:
                 print(
                     f"Active:{active} | "
                     f"Pitch:{pitch:+.2f} Yaw:{yaw:+.2f} Roll:{roll:+.2f} | "

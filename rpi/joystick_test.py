@@ -108,7 +108,7 @@ def main():
     try:
         input("Press Enter to ARM ESCs and begin motor control (Ctrl+C to cancel)...")
         send_cmd(ser, "ARM", wait=4.5)
-        send_cmd(ser, "MOTORS " + " ".join(str(BASE_THROTTLE) for _ in MIX_MATRIX), wait=0.2)
+        send_cmd(ser, "MOTORS " + " ".join(str(BASE_THROTTLE) for _ in range(6)), wait=0.2)
 
         pitch = 0.0
         yaw = 0.0

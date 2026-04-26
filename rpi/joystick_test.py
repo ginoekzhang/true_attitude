@@ -9,8 +9,9 @@ SERIAL_TIMEOUT = 0.3
 
 MOTOR_MIN = 1155
 MOTOR_MAX = 1300
-BASE_THROTTLE = 1227
+BASE_THROTTLE = MOTOR_MIN  # Changed to MOTOR_MIN for 0-100% mapping
 DEADZONE = 0.08
+INPUT_THRESHOLD = 0.1  # Noise shield threshold
 
 # Motor assignments
 PITCH_UP = 0
@@ -113,6 +114,7 @@ def main():
         pitch = 0.0
         yaw = 0.0
         roll = 0.0
+        last_print_time = time.time()
 
         for event in controller.read_loop():
             if event.type != ecodes.EV_ABS:
@@ -133,14 +135,24 @@ def main():
             roll = deadzone(roll)
 
             motor_pwms = mix_motors(pitch, roll, yaw)
-            send_cmd(ser, "MOTORS " + " ".join(str(p) for p in motor_pwms), wait=0.05)
 
-            print(
-                f"Pitch: {pitch:+.2f} | Yaw: {yaw:+.2f} | Roll: {roll:+.2f} | "
-                f"PitchUp:{motor_pwms[PITCH_UP]} PitchDown:{motor_pwms[PITCH_DOWN]} | "
-                f"YawLeft:{motor_pwms[YAW_LEFT]} YawRight:{motor_pwms[YAW_RIGHT]} | "
-                f"RollLeft:{motor_pwms[ROLL_LEFT]} RollRight:{motor_pwms[ROLL_RIGHT]}"
-            )
+            # Noise shield: only send commands if input exceeds threshold
+            if max(abs(pitch), abs(yaw), abs(roll)) > INPUT_THRESHOLD:
+                send_cmd(ser, "MOTORS " + " ".join(str(p) for p in motor_pwms), wait=0.05)
+
+                current_time = time.time()
+                if current_time - last_print_time > 0.5:
+                    print(
+                        f"Pitch: {pitch:+.2f} | Yaw: {yaw:+.2f} | Roll: {roll:+.2f} | "
+                        f"PitchUp:{motor_pwms[PITCH_UP]} PitchDown:{motor_pwms[PITCH_DOWN]} | "
+                        f"YawLeft:{motor_pwms[YAW_LEFT]} YawRight:{motor_pwms[YAW_RIGHT]} | "
+                        f"RollLeft:{motor_pwms[ROLL_LEFT]} RollRight:{motor_pwms[ROLL_RIGHT]}"
+                    )
+                    last_print_time = current_time
+            else:
+                # Send base throttle when no input
+                base_pwms = [BASE_THROTTLE] * 6
+                send_cmd(ser, "MOTORS " + " ".join(str(p) for p in base_pwms), wait=0.05)
 
     except KeyboardInterrupt:
         print("\nStopping and closing serial port...")

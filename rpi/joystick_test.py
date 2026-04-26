@@ -76,13 +76,15 @@ def drain(serial_port):
             print("PICO:", line)
 
 
-def send_cmd(serial_port, cmd, wait=0.1):
+def send_cmd(serial_port, cmd, wait=0.1, quiet=False):
     full_cmd = "CMD " + cmd
-    print("SEND:", full_cmd)
+    if not quiet:
+        print("SEND:", full_cmd)
     serial_port.write((full_cmd + "\n").encode("utf-8"))
     serial_port.flush()
     time.sleep(wait)
-    drain(serial_port)
+    if not quiet:
+        drain(serial_port)
 
 
 def main():
@@ -138,7 +140,7 @@ def main():
 
             # Noise shield: only send commands if input exceeds threshold
             if max(abs(pitch), abs(yaw), abs(roll)) > INPUT_THRESHOLD:
-                send_cmd(ser, "MOTORS " + " ".join(str(p) for p in motor_pwms), wait=0.05)
+                send_cmd(ser, "MOTORS " + " ".join(str(p) for p in motor_pwms), wait=0.05, quiet=False)
 
                 current_time = time.time()
                 if current_time - last_print_time > 0.5:
@@ -149,10 +151,6 @@ def main():
                         f"RollLeft:{motor_pwms[ROLL_LEFT]} RollRight:{motor_pwms[ROLL_RIGHT]}"
                     )
                     last_print_time = current_time
-            else:
-                # Send base throttle when no input
-                base_pwms = [BASE_THROTTLE] * 6
-                send_cmd(ser, "MOTORS " + " ".join(str(p) for p in base_pwms), wait=0.05)
 
     except KeyboardInterrupt:
         print("\nStopping and closing serial port...")

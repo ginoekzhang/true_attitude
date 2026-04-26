@@ -210,28 +210,25 @@ def main():
             now = time.time()
 
             if killed:
-                if now - last_print_time >= PRINT_PERIOD:
-                    print("SYSTEM KILLED — press Enter to re-arm, or Ctrl+C to exit.")
-                    last_print_time = now
+                print("SYSTEM KILLED — press Enter to re-arm, or Ctrl+C to exit.")
 
                 try:
-                    user_input = input()
-                    if user_input == "":
-                        arm_escs(ser)
+                    input()
+                    arm_escs(ser)
 
-                        clear_controller_events(controller)
-                        print("Controller event queue cleared.")
+                    clear_controller_events(controller)
+                    print("Controller event queue cleared.")
 
-                        killed = False
-                        pitch = 0.0
-                        yaw = 0.0
-                        roll = 0.0
+                    killed = False
+                    pitch = 0.0
+                    yaw = 0.0
+                    roll = 0.0
 
-                        last_send_time = 0.0
-                        last_print_time = 0.0
-                        last_active = None
+                    last_send_time = 0.0
+                    last_print_time = 0.0
+                    last_active = None
 
-                        print("Controller active again.")
+                    print("Controller active again.")
                 except KeyboardInterrupt:
                     break
 

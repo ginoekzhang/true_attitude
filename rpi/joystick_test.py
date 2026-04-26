@@ -6,7 +6,7 @@ SERIAL_PORT = "/dev/ttyACM0"
 BAUD = 115200
 SERIAL_TIMEOUT = 0.05
 
-OFF_PWM = 0          # use 1000 if Pico/ESC does not accept 0
+OFF_PWM = 0          # change to 1000 if Pico/ESC does not accept 0
 MOTOR_MIN = 1155
 MOTOR_MAX = 1300
 
@@ -16,8 +16,8 @@ INPUT_THRESHOLD = 0.12
 SEND_HZ = 20
 SEND_PERIOD = 1.0 / SEND_HZ
 
-PRINT_PERIOD_ACTIVE = 0.5      # twice per second when active
-PRINT_PERIOD_INACTIVE = 0.5    # same rate when inactive
+PRINT_PERIOD = 0.5
+LOOP_SLEEP = 0.005
 
 PITCH_UP = 0
 PITCH_DOWN = 1
@@ -28,8 +28,8 @@ ROLL_RIGHT = 5
 
 
 def find_xbox_controller():
-    devices = [InputDevice(path) for path in list_devices()]
-    for dev in devices:
+    for path in list_devices():
+        dev = InputDevice(path)
         name = dev.name.lower()
         if "xbox" in name or "controller" in name or "gamepad" in name:
             return dev
@@ -84,12 +84,11 @@ def send_cmd(serial_port, cmd, quiet=True):
         print("SEND:", full_cmd)
 
     serial_port.write((full_cmd + "\n").encode("utf-8"))
-    # Do not flush here. flush() can block and slow active control.
+    # no flush: flush can block
 
 
 def send_motors(serial_port, motor_pwms):
-    cmd = "MOTORS " + " ".join(str(p) for p in motor_pwms)
-    send_cmd(serial_port, cmd, quiet=True)
+    send_cmd(serial_port, "MOTORS " + " ".join(str(p) for p in motor_pwms), quiet=True)
 
 
 def main():
@@ -100,6 +99,12 @@ def main():
 
     print(f"Connected to: {controller.name}")
     print(f"Device path: {controller.path}")
+
+    try:
+        controller.grab()
+        print("Controller grabbed.")
+    except Exception:
+        print("Could not grab controller. Continuing anyway.")
 
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD, timeout=SERIAL_TIMEOUT)
@@ -134,20 +139,24 @@ def main():
 
         print("Controller active. Ctrl+C to stop.")
 
-        for event in controller.read_loop():
-            if event.type != ecodes.EV_ABS:
-                continue
+        while True:
+            try:
+                events = controller.read()
+            except BlockingIOError:
+                events = []
 
-            code = ecodes.ABS[event.code]
+            for event in events:
+                if event.type != ecodes.EV_ABS:
+                    continue
 
-            if code == "ABS_RZ":
-                pitch = -normalize_stick(event.value)
-            elif code == "ABS_Z":
-                yaw = normalize_stick(event.value)
-            elif code == "ABS_X":
-                roll = normalize_stick(event.value)
-            else:
-                continue
+                code = ecodes.ABS[event.code]
+
+                if code == "ABS_RZ":
+                    pitch = -normalize_stick(event.value)
+                elif code == "ABS_Z":
+                    yaw = normalize_stick(event.value)
+                elif code == "ABS_X":
+                    roll = normalize_stick(event.value)
 
             pitch = deadzone(pitch)
             yaw = deadzone(yaw)
@@ -157,10 +166,8 @@ def main():
 
             if active:
                 motor_pwms = mix_motors(pitch, roll, yaw)
-                print_period = PRINT_PERIOD_ACTIVE
             else:
                 motor_pwms = [OFF_PWM] * 6
-                print_period = PRINT_PERIOD_INACTIVE
 
             now = time.time()
 
@@ -171,7 +178,7 @@ def main():
 
                 last_send_time = now
 
-            if active != last_active:
+            if active != last_active or now - last_print_time >= PRINT_PERIOD:
                 print(
                     f"Active:{active} | "
                     f"Pitch:{pitch:+.2f} Yaw:{yaw:+.2f} Roll:{roll:+.2f} | "
@@ -180,13 +187,7 @@ def main():
                 last_active = active
                 last_print_time = now
 
-            elif now - last_print_time >= print_period:
-                print(
-                    f"Active:{active} | "
-                    f"Pitch:{pitch:+.2f} Yaw:{yaw:+.2f} Roll:{roll:+.2f} | "
-                    f"Motors:{motor_pwms}"
-                )
-                last_print_time = now
+            time.sleep(LOOP_SLEEP)
 
     except KeyboardInterrupt:
         print("\nStopping motors...")
@@ -196,6 +197,11 @@ def main():
             send_motors(ser, [OFF_PWM] * 6)
             time.sleep(0.1)
             send_cmd(ser, "STOP", quiet=False)
+        except Exception:
+            pass
+
+        try:
+            controller.ungrab()
         except Exception:
             pass
 

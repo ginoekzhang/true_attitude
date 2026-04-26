@@ -103,9 +103,13 @@ def arm_escs(serial_port):
 
 def emergency_stop(serial_port):
     print("!!! EMERGENCY STOP PRESSED !!!")
+
     send_motors(serial_port, [OFF_PWM] * 6)
     time.sleep(0.05)
+
     send_cmd(serial_port, "STOP", quiet=False)
+    time.sleep(0.1)
+    drain(serial_port)
 
 
 def main():

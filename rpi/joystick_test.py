@@ -36,7 +36,7 @@ for event in controller.read_loop():
         code = ecodes.ABS[event.code]
 
         if code == "ABS_RZ":
-            pitch = normalize_stick(event.value)
+            pitch = -normalize_stick(event.value)
 
         elif code == "ABS_Z":
             yaw = normalize_stick(event.value)

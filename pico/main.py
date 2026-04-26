@@ -6,6 +6,8 @@ import machine
 
 PWM_PINS = [0, 1, 2, 3, 4, 5]
 PWM_FREQ = 50
+
+OFF_US = 1000
 MIN_US = 1155
 MAX_US = 1300
 ARM_US = 1000
@@ -15,8 +17,13 @@ for pwm in pwms:
     pwm.freq(PWM_FREQ)
 
 
-def clamp_us(us):
+def clamp_motor_us(us):
     us = int(us)
+
+    # allow 0 as OFF command
+    if us == 0:
+        return OFF_US
+
     if us < MIN_US:
         return MIN_US
     if us > MAX_US:
@@ -25,9 +32,8 @@ def clamp_us(us):
 
 
 def set_pulse_us(channel, us):
-    if channel < 0 or channel >= len(pwms):
-        return
-    pwms[channel].duty_ns(clamp_us(us) * 1000)
+    if 0 <= channel < len(pwms):
+        pwms[channel].duty_ns(clamp_motor_us(us) * 1000)
 
 
 def set_all_pulse_us(us):
@@ -36,7 +42,7 @@ def set_all_pulse_us(us):
 
 
 def stop_all_motors():
-    set_all_pulse_us(MIN_US)
+    set_all_pulse_us(OFF_US)
 
 
 def send_resp(msg):
@@ -51,34 +57,31 @@ def clean_line(raw):
             filtered.append(ch)
     return "".join(filtered).strip()
 
-stop_all_motors()
-armed = False
 
-poll = uselect.poll()
-poll.register(sys.stdin, uselect.POLLIN)
+def read_all_available_lines():
+    lines = []
 
-print("PICO READY")
-print("INFO Send: CMD ARM / CMD THROTTLE <us> / CMD MOTORS <m1> ... <m6> / CMD STOP / CMD REBOOT")
+    while poll.poll(0):
+        raw = sys.stdin.readline()
+        if not raw:
+            break
 
-while True:
-    events = poll.poll(50)
-    if not events:
-        continue
+        line = clean_line(raw)
+        if line:
+            lines.append(line)
 
-    raw = sys.stdin.readline()
-    if not raw:
-        continue
+    return lines
 
-    line = clean_line(raw)
-    if not line:
-        continue
+
+def handle_command(line):
+    global armed
 
     if not line.startswith("CMD "):
-        continue
+        return
 
     cmd = line[4:].strip()
     if not cmd:
-        continue
+        return
 
     parts = cmd.split()
     op = parts[0].upper()
@@ -88,64 +91,109 @@ while True:
         set_all_pulse_us(ARM_US)
         time.sleep(4.0)
         armed = True
-        send_resp("ARMED")
-
-    elif op == "STOP":
         stop_all_motors()
-        send_resp("STOPPED")
+        send_resp("ARMED")
+        return
 
-    elif op == "THROTTLE":
-        if len(parts) != 2:
-            send_resp("ERR BAD THROTTLE FORMAT")
-            continue
+    if op == "STOP":
+        stop_all_motors()
+        armed = False
+        send_resp("STOPPED")
+        return
+
+    if op == "MOTORS":
         if not armed:
             send_resp("ERR NOT ARMED")
-            continue
+            return
+
+        if len(parts) != 7:
+            send_resp("ERR MOTORS REQUIRES 6 VALUES")
+            return
+
+        try:
+            motor_values = [int(v) for v in parts[1:]]
+        except ValueError:
+            send_resp("ERR BAD NUMBER")
+            return
+
+        for channel, us in enumerate(motor_values):
+            set_pulse_us(channel, us)
+
+        # Do NOT print every motor command.
+        # Printing causes serial backlog.
+        return
+
+    if op == "THROTTLE":
+        if not armed:
+            send_resp("ERR NOT ARMED")
+            return
+
+        if len(parts) != 2:
+            send_resp("ERR BAD THROTTLE FORMAT")
+            return
+
         try:
             us = int(parts[1])
         except ValueError:
             send_resp("ERR BAD NUMBER")
-            continue
+            return
+
         set_all_pulse_us(us)
         send_resp("THROTTLE SET {}".format(us))
+        return
 
-    elif op == "MOTORS":
-        if len(parts) != 7:
-            send_resp("ERR MOTORS REQUIRES 6 VALUES")
-            continue
+    if op == "TEST":
         if not armed:
             send_resp("ERR NOT ARMED")
-            continue
-        motor_values = []
-        for idx, part in enumerate(parts[1:]):
-            try:
-                motor_values.append(int(part))
-            except ValueError:
-                motor_values = None
-                break
-        if motor_values is None:
-            send_resp("ERR BAD NUMBER")
-            continue
+            return
 
-        for channel, us in enumerate(motor_values):
-            set_pulse_us(channel, us)
-        send_resp("MOTORS SET {}".format(" ".join(str(clamp_us(v)) for v in motor_values)))
-
-    elif op == "TEST":
-        if not armed:
-            send_resp("ERR NOT ARMED")
-            continue
         send_resp("TEST START")
         set_all_pulse_us(1200)
         time.sleep(2.0)
         stop_all_motors()
         send_resp("TEST DONE")
+        return
 
-    elif op == "REBOOT":
+    if op == "REBOOT":
         send_resp("REBOOTING")
         time.sleep(0.2)
         machine.reset()
 
-    else:
-        send_resp("ERR UNKNOWN CMD")
-        
+    send_resp("ERR UNKNOWN CMD")
+
+
+stop_all_motors()
+armed = False
+
+poll = uselect.poll()
+poll.register(sys.stdin, uselect.POLLIN)
+
+print("PICO READY")
+print("INFO Send: CMD ARM / CMD MOTORS <m1> ... <m6> / CMD STOP / CMD REBOOT")
+
+while True:
+    events = poll.poll(20)
+    if not events:
+        continue
+
+    lines = read_all_available_lines()
+    if not lines:
+        continue
+
+    # STOP has priority over everything queued before it
+    stop_found = False
+    for line in lines:
+        if line.startswith("CMD ") and line[4:].strip().upper().startswith("STOP"):
+            stop_found = True
+            break
+
+    if stop_found:
+        stop_all_motors()
+        armed = False
+        send_resp("STOPPED")
+        continue
+
+    # Latest-command-only behavior:
+    # Ignore old queued motor commands and execute only newest line.
+    latest_line = lines[-1]
+    handle_command(latest_line)

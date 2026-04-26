@@ -10,8 +10,8 @@ OFF_PWM = 0          # change to 1000 if Pico/ESC does not accept 0
 MOTOR_MIN = 1155
 MOTOR_MAX = 1300
 
-DEADZONE = 0.1
-INPUT_THRESHOLD = 0.12
+DEADZONE = 0.08
+INPUT_THRESHOLD = 0.10
 
 SEND_HZ = 20
 SEND_PERIOD = 1.0 / SEND_HZ
@@ -19,7 +19,7 @@ SEND_PERIOD = 1.0 / SEND_HZ
 PRINT_PERIOD = 0.5
 LOOP_SLEEP = 0.005
 
-KILL_BUTTON = "BTN_SOUTH"  # A button on Xbox controller
+KILL_BUTTON_CODE = ecodes.BTN_SOUTH  # Xbox A button
 
 PITCH_UP = 0
 PITCH_DOWN = 1
@@ -79,6 +79,14 @@ def drain(serial_port):
             print("PICO:", line)
 
 
+def clear_controller_events(controller):
+    try:
+        while True:
+            list(controller.read())
+    except BlockingIOError:
+        pass
+
+
 def send_cmd(serial_port, cmd, quiet=True):
     full_cmd = "CMD " + cmd
 
@@ -97,6 +105,7 @@ def arm_escs(serial_port):
     send_cmd(serial_port, "ARM", quiet=False)
     time.sleep(4.5)
     drain(serial_port)
+
     send_motors(serial_port, [OFF_PWM] * 6)
     print("Armed. Motors OFF.")
 
@@ -140,7 +149,11 @@ def main():
 
     try:
         input("Press Enter to ARM ESCs and begin motor control...")
+
         arm_escs(ser)
+
+        clear_controller_events(controller)
+        print("Controller event queue cleared.")
 
         pitch = 0.0
         yaw = 0.0
@@ -165,13 +178,15 @@ def main():
 
             for event in events:
                 if event.type == ecodes.EV_KEY:
-                    if event.code == ecodes.BTN_SOUTH and event.value == 1:
+                    if event.code == KILL_BUTTON_CODE and event.value == 1:
                         emergency_stop(ser)
+
                         killed = True
                         last_motor_pwms = [OFF_PWM] * 6
                         pitch = 0.0
                         yaw = 0.0
                         roll = 0.0
+                        clear_controller_events(controller)
                         continue
 
                 elif event.type == ecodes.EV_ABS and not killed:
@@ -195,11 +210,20 @@ def main():
                     user_input = input()
                     if user_input == "":
                         arm_escs(ser)
+
+                        clear_controller_events(controller)
+                        print("Controller event queue cleared.")
+
                         killed = False
+                        pitch = 0.0
+                        yaw = 0.0
+                        roll = 0.0
+
                         last_motor_pwms = None
                         last_active = None
                         last_send_time = 0.0
                         last_print_time = 0.0
+
                         print("Controller active again.")
                 except KeyboardInterrupt:
                     break
@@ -243,6 +267,8 @@ def main():
             send_motors(ser, [OFF_PWM] * 6)
             time.sleep(0.1)
             send_cmd(ser, "STOP", quiet=False)
+            time.sleep(0.1)
+            drain(ser)
         except Exception:
             pass
 

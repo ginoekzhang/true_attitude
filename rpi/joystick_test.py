@@ -19,6 +19,8 @@ SEND_PERIOD = 1.0 / SEND_HZ
 PRINT_PERIOD = 0.5
 LOOP_SLEEP = 0.005
 
+KILL_BUTTON = "BTN_SOUTH"  # A button on Xbox controller
+
 PITCH_UP = 0
 PITCH_DOWN = 1
 YAW_LEFT = 2
@@ -84,11 +86,26 @@ def send_cmd(serial_port, cmd, quiet=True):
         print("SEND:", full_cmd)
 
     serial_port.write((full_cmd + "\n").encode("utf-8"))
-    # no flush: flush can block
 
 
 def send_motors(serial_port, motor_pwms):
     send_cmd(serial_port, "MOTORS " + " ".join(str(p) for p in motor_pwms), quiet=True)
+
+
+def arm_escs(serial_port):
+    print("Arming ESCs...")
+    send_cmd(serial_port, "ARM", quiet=False)
+    time.sleep(4.5)
+    drain(serial_port)
+    send_motors(serial_port, [OFF_PWM] * 6)
+    print("Armed. Motors OFF.")
+
+
+def emergency_stop(serial_port):
+    print("!!! EMERGENCY STOP PRESSED !!!")
+    send_motors(serial_port, [OFF_PWM] * 6)
+    time.sleep(0.05)
+    send_cmd(serial_port, "STOP", quiet=False)
 
 
 def main():
@@ -119,14 +136,7 @@ def main():
 
     try:
         input("Press Enter to ARM ESCs and begin motor control...")
-
-        print("Arming ESCs...")
-        send_cmd(ser, "ARM", quiet=False)
-        time.sleep(4.5)
-        drain(ser)
-
-        print("Starting with all motors OFF.")
-        send_motors(ser, [OFF_PWM] * 6)
+        arm_escs(ser)
 
         pitch = 0.0
         yaw = 0.0
@@ -137,7 +147,11 @@ def main():
         last_motor_pwms = None
         last_active = None
 
-        print("Controller active. Ctrl+C to stop.")
+        killed = False
+
+        print("Controller active.")
+        print("Press A / BTN_SOUTH for emergency software stop.")
+        print("Ctrl+C to exit.")
 
         while True:
             try:
@@ -146,17 +160,48 @@ def main():
                 events = []
 
             for event in events:
-                if event.type != ecodes.EV_ABS:
-                    continue
+                if event.type == ecodes.EV_KEY:
+                    key = ecodes.KEY[event.code]
 
-                code = ecodes.ABS[event.code]
+                    if key == KILL_BUTTON and event.value == 1:
+                        emergency_stop(ser)
+                        killed = True
+                        last_motor_pwms = [OFF_PWM] * 6
+                        pitch = 0.0
+                        yaw = 0.0
+                        roll = 0.0
 
-                if code == "ABS_RZ":
-                    pitch = -normalize_stick(event.value)
-                elif code == "ABS_Z":
-                    yaw = normalize_stick(event.value)
-                elif code == "ABS_X":
-                    roll = normalize_stick(event.value)
+                elif event.type == ecodes.EV_ABS and not killed:
+                    code = ecodes.ABS[event.code]
+
+                    if code == "ABS_RZ":
+                        pitch = -normalize_stick(event.value)
+                    elif code == "ABS_Z":
+                        yaw = normalize_stick(event.value)
+                    elif code == "ABS_X":
+                        roll = normalize_stick(event.value)
+
+            now = time.time()
+
+            if killed:
+                if now - last_print_time >= PRINT_PERIOD:
+                    print("SYSTEM KILLED — press Enter to re-arm, or Ctrl+C to exit.")
+                    last_print_time = now
+
+                try:
+                    user_input = input()
+                    if user_input == "":
+                        arm_escs(ser)
+                        killed = False
+                        last_motor_pwms = None
+                        last_active = None
+                        last_send_time = 0.0
+                        last_print_time = 0.0
+                        print("Controller active again.")
+                except KeyboardInterrupt:
+                    break
+
+                continue
 
             pitch = deadzone(pitch)
             yaw = deadzone(yaw)
@@ -168,8 +213,6 @@ def main():
                 motor_pwms = mix_motors(pitch, roll, yaw)
             else:
                 motor_pwms = [OFF_PWM] * 6
-
-            now = time.time()
 
             if now - last_send_time >= SEND_PERIOD:
                 if motor_pwms != last_motor_pwms:

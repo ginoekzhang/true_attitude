@@ -4,28 +4,44 @@ import uselect
 import time
 import machine
 
-PWM_PIN = 5
+PWM_PINS = [0, 1, 2, 3, 4, 5]
 PWM_FREQ = 50
 MIN_US = 1000
 MAX_US = 2000
 ARM_US = 1000
 
-pwm = PWM(Pin(PWM_PIN))
-pwm.freq(PWM_FREQ)
+pwms = [PWM(Pin(pin)) for pin in PWM_PINS]
+for pwm in pwms:
+    pwm.freq(PWM_FREQ)
 
-def set_pulse_us(us):
+
+def clamp_us(us):
     us = int(us)
     if us < MIN_US:
-        us = MIN_US
+        return MIN_US
     if us > MAX_US:
-        us = MAX_US
-    pwm.duty_ns(us * 1000)
+        return MAX_US
+    return us
 
-def stop_motor():
-    set_pulse_us(MIN_US)
+
+def set_pulse_us(channel, us):
+    if channel < 0 or channel >= len(pwms):
+        return
+    pwms[channel].duty_ns(clamp_us(us) * 1000)
+
+
+def set_all_pulse_us(us):
+    for i in range(len(pwms)):
+        set_pulse_us(i, us)
+
+
+def stop_all_motors():
+    set_all_pulse_us(MIN_US)
+
 
 def send_resp(msg):
     print("RESP " + msg)
+
 
 def clean_line(raw):
     filtered = []
@@ -35,14 +51,14 @@ def clean_line(raw):
             filtered.append(ch)
     return "".join(filtered).strip()
 
-stop_motor()
+stop_all_motors()
 armed = False
 
 poll = uselect.poll()
 poll.register(sys.stdin, uselect.POLLIN)
 
 print("PICO READY")
-print("INFO Send: CMD ARM / CMD THROTTLE 1100 / CMD STOP / CMD REBOOT")
+print("INFO Send: CMD ARM / CMD THROTTLE <us> / CMD MOTORS <m1> ... <m6> / CMD STOP / CMD REBOOT")
 
 while True:
     events = poll.poll(50)
@@ -57,7 +73,6 @@ while True:
     if not line:
         continue
 
-    # Only accept lines that start with CMD
     if not line.startswith("CMD "):
         continue
 
@@ -70,14 +85,13 @@ while True:
 
     if op == "ARM":
         send_resp("ARMING...")
-        # Hold minimum throttle long enough for ESC arming
-        set_pulse_us(ARM_US)
+        set_all_pulse_us(ARM_US)
         time.sleep(4.0)
         armed = True
         send_resp("ARMED")
 
     elif op == "STOP":
-        stop_motor()
+        stop_all_motors()
         send_resp("STOPPED")
 
     elif op == "THROTTLE":
@@ -92,17 +106,39 @@ while True:
         except ValueError:
             send_resp("ERR BAD NUMBER")
             continue
-        set_pulse_us(us)
+        set_all_pulse_us(us)
         send_resp("THROTTLE SET {}".format(us))
+
+    elif op == "MOTORS":
+        if len(parts) != 7:
+            send_resp("ERR MOTORS REQUIRES 6 VALUES")
+            continue
+        if not armed:
+            send_resp("ERR NOT ARMED")
+            continue
+        motor_values = []
+        for idx, part in enumerate(parts[1:]):
+            try:
+                motor_values.append(int(part))
+            except ValueError:
+                motor_values = None
+                break
+        if motor_values is None:
+            send_resp("ERR BAD NUMBER")
+            continue
+
+        for channel, us in enumerate(motor_values):
+            set_pulse_us(channel, us)
+        send_resp("MOTORS SET {}".format(" ".join(str(clamp_us(v)) for v in motor_values)))
 
     elif op == "TEST":
         if not armed:
             send_resp("ERR NOT ARMED")
             continue
         send_resp("TEST START")
-        set_pulse_us(1200)
+        set_all_pulse_us(1200)
         time.sleep(2.0)
-        stop_motor()
+        stop_all_motors()
         send_resp("TEST DONE")
 
     elif op == "REBOOT":

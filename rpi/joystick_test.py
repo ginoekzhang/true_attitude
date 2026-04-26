@@ -13,7 +13,7 @@ MOTOR_MAX = 1300
 DEADZONE = 0.08
 INPUT_THRESHOLD = 0.10
 
-SEND_HZ = 20
+SEND_HZ = 10
 SEND_PERIOD = 1.0 / SEND_HZ
 
 PRINT_PERIOD = 0.5
@@ -93,11 +93,19 @@ def send_cmd(serial_port, cmd, quiet=True):
     if not quiet:
         print("SEND:", full_cmd)
 
+    # Critical: remove unsent old commands before writing newest command.
+    # This prevents serial backlog.
+    serial_port.reset_output_buffer()
+
     serial_port.write((full_cmd + "\n").encode("utf-8"))
 
 
 def send_motors(serial_port, motor_pwms):
-    send_cmd(serial_port, "MOTORS " + " ".join(str(p) for p in motor_pwms), quiet=True)
+    send_cmd(
+        serial_port,
+        "MOTORS " + " ".join(str(p) for p in motor_pwms),
+        quiet=True,
+    )
 
 
 def arm_escs(serial_port):
@@ -113,15 +121,11 @@ def arm_escs(serial_port):
 def emergency_stop(serial_port):
     print("!!! EMERGENCY STOP PRESSED !!!")
 
-    # Clear unsent old commands from Pi side
-    serial_port.reset_output_buffer()
-
-    # Send only OFF + STOP
     send_motors(serial_port, [OFF_PWM] * 6)
     time.sleep(0.02)
+
     send_cmd(serial_port, "STOP", quiet=False)
 
-    # Wait and read Pico response
     time.sleep(0.1)
     drain(serial_port)
 
@@ -166,7 +170,6 @@ def main():
 
         last_send_time = 0.0
         last_print_time = 0.0
-        last_motor_pwms = None
         last_active = None
 
         killed = False
@@ -187,10 +190,10 @@ def main():
                         emergency_stop(ser)
 
                         killed = True
-                        last_motor_pwms = [OFF_PWM] * 6
                         pitch = 0.0
                         yaw = 0.0
                         roll = 0.0
+
                         clear_controller_events(controller)
                         continue
 
@@ -224,10 +227,9 @@ def main():
                         yaw = 0.0
                         roll = 0.0
 
-                        last_motor_pwms = None
-                        last_active = None
                         last_send_time = 0.0
                         last_print_time = 0.0
+                        last_active = None
 
                         print("Controller active again.")
                 except KeyboardInterrupt:
@@ -246,11 +248,10 @@ def main():
             else:
                 motor_pwms = [OFF_PWM] * 6
 
+            # Latest-command-only serial sending.
+            # Sends at fixed 10 Hz. Each send clears old unsent serial data first.
             if now - last_send_time >= SEND_PERIOD:
-                if motor_pwms != last_motor_pwms:
-                    send_motors(ser, motor_pwms)
-                    last_motor_pwms = motor_pwms[:]
-
+                send_motors(ser, motor_pwms)
                 last_send_time = now
 
             if active != last_active or now - last_print_time >= PRINT_PERIOD:
@@ -270,7 +271,7 @@ def main():
     finally:
         try:
             send_motors(ser, [OFF_PWM] * 6)
-            time.sleep(0.1)
+            time.sleep(0.05)
             send_cmd(ser, "STOP", quiet=False)
             time.sleep(0.1)
             drain(ser)

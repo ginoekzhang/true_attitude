@@ -115,7 +115,7 @@ def arm_escs(serial_port):
     time.sleep(4.5)
     drain(serial_port)
 
-    send_motors(serial_port, [OFF_PWM] * 6)
+    send_motors(serial_port, [IDLE_PWM] * 6)
     print("Armed. Motors OFF.")
 
 
@@ -244,7 +244,7 @@ def main():
             if active:
                 motor_pwms = mix_motors(pitch, roll, yaw)
             else:
-                motor_pwms = [OFF_PWM] * 6
+                motor_pwms = [IDLE_PWM] * 6
 
             # Latest-command-only serial sending.
             # Sends at fixed 10 Hz. Each send clears old unsent serial data first.

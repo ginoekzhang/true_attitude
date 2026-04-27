@@ -8,10 +8,10 @@ PWM_PINS = [0, 1, 2, 3, 4, 5]
 PWM_FREQ = 50
 
 OFF_US = 1000
-MIN_US = 1160
+MIN_US = 1155
 MAX_US = 1200
 ARM_US = 1000
-IDLE_US = 1155
+IDLE_US = 1160
 
 pwms = [PWM(Pin(pin)) for pin in PWM_PINS]
 for pwm in pwms:
@@ -22,7 +22,7 @@ def clamp_motor_us(us):
     us = int(us)
 
     # allow 0 as OFF command
-    if us == 0:
+    if us <= OFF_US:
         return OFF_US
 
     if us < MIN_US:

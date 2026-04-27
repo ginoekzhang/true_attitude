@@ -4,7 +4,7 @@ import uselect
 import time
 import machine
 
-PWM_PINS = [0, 1, 2, 3, 4, 5]
+PWM_PINS = [5, 6, 2, 4, 3, 7] #pins 2,3,4,5,6,7
 PWM_FREQ = 50
 
 OFF_US = 1000

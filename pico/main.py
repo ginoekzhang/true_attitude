@@ -8,9 +8,10 @@ PWM_PINS = [0, 1, 2, 3, 4, 5]
 PWM_FREQ = 50
 
 OFF_US = 1000
-MIN_US = 1155
-MAX_US = 1300
+MIN_US = 1160
+MAX_US = 1200
 ARM_US = 1000
+IDLE_US = 1155
 
 pwms = [PWM(Pin(pin)) for pin in PWM_PINS]
 for pwm in pwms:
@@ -90,9 +91,9 @@ def handle_command(line):
         send_resp("ARMING...")
         set_all_pulse_us(ARM_US)
         time.sleep(4.0)
+        set_all_pulse_us(IDLE_US)
         armed = True
-        stop_all_motors()
-        send_resp("ARMED")
+        send_resp("ARMED_IDLE")
         return
 
     if op == "STOP":

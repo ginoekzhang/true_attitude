@@ -8,7 +8,7 @@ SERIAL_TIMEOUT = 0.05
 
 OFF_PWM = 0          # change to 1000 if Pico/ESC does not accept 0
 MOTOR_MIN = 1155
-MOTOR_MAX = 1300
+MOTOR_MAX = 1200
 
 DEADZONE = 0.05
 INPUT_THRESHOLD = 0.15

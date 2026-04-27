@@ -6,7 +6,8 @@ SERIAL_PORT = "/dev/ttyACM0"
 BAUD = 115200
 SERIAL_TIMEOUT = 0.05
 
-OFF_PWM = 0          # change to 1000 if Pico/ESC does not accept 0
+OFF_PWM = 1000
+IDLE_PWM = 1155          # change to 1000 if Pico/ESC does not accept 0
 MOTOR_MIN = 1155
 MOTOR_MAX = 1200
 
@@ -51,7 +52,7 @@ def clamp(value, minimum, maximum):
 
 
 def mix_motors(pitch, roll, yaw):
-    motors = [OFF_PWM] * 6
+    motors = [IDLE_PWM] * 6
     span = MOTOR_MAX - MOTOR_MIN
 
     if pitch > 0:

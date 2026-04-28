@@ -7,8 +7,8 @@ BAUD = 115200
 SERIAL_TIMEOUT = 0.05
 
 OFF_PWM = 1000
-IDLE_PWM = 1155          # change to 1000 if Pico/ESC does not accept 0
-MOTOR_MIN = 1155
+IDLE_PWM = 1165
+MOTOR_MIN = 1165
 MOTOR_MAX = 1200
 
 DEADZONE = 0.05
@@ -22,12 +22,22 @@ LOOP_SLEEP = 0.005
 
 KILL_BUTTON_CODE = ecodes.BTN_SOUTH  # Xbox A button
 
-PITCH_UP = 0
-PITCH_DOWN = 1
-YAW_LEFT = 2
-YAW_RIGHT = 3
-ROLL_LEFT = 4
-ROLL_RIGHT = 5
+# 12 motor layout:
+# Pitch up:    motors 0, 1
+# Pitch down:  motors 2, 3
+# Yaw left:    motors 4, 5
+# Yaw right:   motors 6, 7
+# Roll left:   motors 8, 9
+# Roll right:  motors 10, 11
+
+PITCH_UP = [0, 1]
+PITCH_DOWN = [2, 3]
+YAW_LEFT = [4, 5]
+YAW_RIGHT = [6, 7]
+ROLL_LEFT = [8, 9]
+ROLL_RIGHT = [10, 11]
+
+NUM_MOTORS = 12
 
 
 def find_xbox_controller():
@@ -51,24 +61,35 @@ def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
 
 
+def set_group(motors, indices, value):
+    for i in indices:
+        motors[i] = value
+
+
 def mix_motors(pitch, roll, yaw):
-    motors = [IDLE_PWM] * 6
+    motors = [IDLE_PWM] * NUM_MOTORS
     span = MOTOR_MAX - MOTOR_MIN
 
     if pitch > 0:
-        motors[PITCH_UP] = MOTOR_MIN + pitch * span
+        value = MOTOR_MIN + pitch * span
+        set_group(motors, PITCH_UP, value)
     elif pitch < 0:
-        motors[PITCH_DOWN] = MOTOR_MIN + (-pitch) * span
+        value = MOTOR_MIN + (-pitch) * span
+        set_group(motors, PITCH_DOWN, value)
 
     if yaw > 0:
-        motors[YAW_RIGHT] = MOTOR_MIN + yaw * span
+        value = MOTOR_MIN + yaw * span
+        set_group(motors, YAW_RIGHT, value)
     elif yaw < 0:
-        motors[YAW_LEFT] = MOTOR_MIN + (-yaw) * span
+        value = MOTOR_MIN + (-yaw) * span
+        set_group(motors, YAW_LEFT, value)
 
     if roll > 0:
-        motors[ROLL_RIGHT] = MOTOR_MIN + roll * span
+        value = MOTOR_MIN + roll * span
+        set_group(motors, ROLL_RIGHT, value)
     elif roll < 0:
-        motors[ROLL_LEFT] = MOTOR_MIN + (-roll) * span
+        value = MOTOR_MIN + (-roll) * span
+        set_group(motors, ROLL_LEFT, value)
 
     return [int(round(clamp(m, OFF_PWM, MOTOR_MAX))) for m in motors]
 
@@ -94,10 +115,7 @@ def send_cmd(serial_port, cmd, quiet=True):
     if not quiet:
         print("SEND:", full_cmd)
 
-    # Critical: remove unsent old commands before writing newest command.
-    # This prevents serial backlog.
     serial_port.reset_output_buffer()
-
     serial_port.write((full_cmd + "\n").encode("utf-8"))
 
 
@@ -115,14 +133,14 @@ def arm_escs(serial_port):
     time.sleep(4.5)
     drain(serial_port)
 
-    send_motors(serial_port, [IDLE_PWM] * 6)
-    print("Armed. Motors OFF.")
+    send_motors(serial_port, [IDLE_PWM] * NUM_MOTORS)
+    print("Armed. Motors IDLE.")
 
 
 def emergency_stop(serial_port):
     print("!!! EMERGENCY STOP PRESSED !!!")
 
-    send_motors(serial_port, [OFF_PWM] * 6)
+    send_motors(serial_port, [OFF_PWM] * NUM_MOTORS)
     time.sleep(0.02)
 
     send_cmd(serial_port, "STOP", quiet=False)
@@ -244,10 +262,8 @@ def main():
             if active:
                 motor_pwms = mix_motors(pitch, roll, yaw)
             else:
-                motor_pwms = [IDLE_PWM] * 6
+                motor_pwms = [IDLE_PWM] * NUM_MOTORS
 
-            # Latest-command-only serial sending.
-            # Sends at fixed 10 Hz. Each send clears old unsent serial data first.
             if now - last_send_time >= SEND_PERIOD:
                 send_motors(ser, motor_pwms)
                 last_send_time = now
@@ -268,7 +284,7 @@ def main():
 
     finally:
         try:
-            send_motors(ser, [OFF_PWM] * 6)
+            send_motors(ser, [OFF_PWM] * NUM_MOTORS)
             time.sleep(0.05)
             send_cmd(ser, "STOP", quiet=False)
             time.sleep(0.1)

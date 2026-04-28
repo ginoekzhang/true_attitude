@@ -107,8 +107,8 @@ def handle_command(line):
             send_resp("ERR NOT ARMED")
             return
 
-        if len(parts) != 7:
-            send_resp("ERR MOTORS REQUIRES 6 VALUES")
+        if len(parts) != 13:
+            send_resp("ERR MOTORS REQUIRES 12 VALUES")
             return
 
         try:

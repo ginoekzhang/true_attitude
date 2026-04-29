@@ -6,12 +6,8 @@ import machine
 
 PWM_PINS = [11, 12, 5, 6, 2, 7, 9, 13, 8, 10, 3, 4]
 #pitchup, pitchdown, pitchdown, yawleft, yawleft, yawright, yawright, rollleft, rollleft, rollright, rollright
+
 PWM_FREQ = 50
-
-# yaw left = up, yaw right = roll right 
-
-# [ pd, yr, yl, rr, pu, rl
-
 
 OFF_US = 1000
 MIN_US = 1155

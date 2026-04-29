@@ -4,8 +4,11 @@ import uselect
 import time
 import machine
 
-PWM_PINS = [9, 13, 5, 6, 2, 7, 8, 10, 11, 12, 3, 4] #white 2, 3, 4, 5, 6, 7  black 11, 12, 8, 10, 9, 13
+PWM_PINS = [5, 6, 9, 13, 2, 7, 3, 4, 11, 12, 8, 10] # pitchup, pitchup, pitchdown, pitchdown, yawleft, yawleft, yawright, yawright, rollleft, rollleft, rollright, rollright
+#white 2, 3, 4, 5, 6, 7  black 11, 12, 8, 10, 9, 13
 PWM_FREQ = 50
+
+# yaw left = up, yaw right = roll right 
 
 OFF_US = 1000
 MIN_US = 1155
